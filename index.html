@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <link
+      href="https://fonts.googleapis.com/css?family=Roboto&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+    <title>Map Plastic</title>
+    <style>
+      .tooltip-title {
+        font-size: 16px;
+        text-transform: uppercase;
+        font-weight: normal;
+        font-stretch: condensed;
+        font-style: normal;
+        line-height: 1.25;
+        letter-spacing: 0.2px;
+        grid-area: title;
+      }
+      .plastic-tooltip-1 {
+        grid-area: plastic1;
+      }
+      .plastic-tooltip-2 {
+        grid-area: plastic2;
+      }
+      .tooltip-desc-plastic {
+        font-size: 14px;
+        font-weight: 300;
+        font-stretch: condensed;
+        font-style: normal;
+        line-height: 1.43;
+        letter-spacing: 0.2px;
+      }
+      .tooltip-num-plastic {
+        font-size: 16px;
+        font-weight: normal;
+        font-stretch: condensed;
+        font-style: normal;
+        line-height: 1.25;
+        letter-spacing: 0.23px;
+      }
+      div.tooltip {
+        font-family: "Roboto", sans-serif;
+        position: absolute;
+        text-align: left;
+        padding: 15px 19px 15px 19px;
+        font: 0.8em;
+        background: rgb(255, 255, 255);
+        border-radius: 8px;
+        pointer-events: none;
+        max-width: 300px;
+        background-color: #049699;
+        color: #f9edd1;
+        display: grid;
+        grid-column-gap: 30px;
+        grid-row-gap: 10px;
+        grid-template-areas:
+          "title ."
+          "plastic1 plastic2";
+      }
+      /* .land:hover {
+            cursor: pointer;
+        } */
+      #map-container {
+        position: relative;
+        width: 850px;
+        height: 450px;
+        background: radial-gradient(
+          circle,
+          rgba(143, 225, 213, 1) 0%,
+          rgba(40, 183, 189, 1) 100%
+        );
+      }
+      #map-legend {
+        position: absolute;
+        bottom: 0px;
+        left: 20px;
+        /* width: 40%; */
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map-container">
+      <svg
+        id = "mapSVG"
+        version="1.1"
+        baseProfile="full"
+        width="800"
+        height="400"
+        xmlns="http://www.w3.org/2000/svg"
+      ></svg>
+    </div>
+    <script>
+      const width = 800;
+      const height = 400;
+
+      let line = d3
+        .line()
+        .x(d => d[0])
+        .y(d => d[1])
+        .curve(d3.curveBasisClosed);
+
+      let projection = d3
+        .geoEqualEarth()
+        .fitExtent([[0, 0], [width, height]], { type: "Sphere" })
+        .precision(0.1);
+
+      let path = d3.geoPath().projection(projection);
+
+      // let color = d3
+      //   .scaleQuantile()
+      //   .range([
+      //     "#fbf6ee",
+      //     "#f7eddd",
+      //     "#f3e5cd",
+      //     "#f0dcbc",
+      //     "#ecd4ac",
+      //     "#e8cb9b",
+      //     "#e5c28a",
+      //     "#e1ba7a",
+      //     "#ddb169",
+      //     "#daa959"
+      //   ])
+      //   .unknown("#ccc");
+      let color = d3
+        .scaleSequential()
+        .interpolator(
+          d3.interpolate(
+          "#fbf6ee",
+          "#daa959"
+        ))
+        .unknown("#ccc");
+
+      function round(x) {
+        let my_path = path(x).split("M");
+        my_path.shift();
+
+        let land_rounded = [];
+        my_path.forEach(d => {
+          land_rounded.push(
+            d
+              .replace(/Z/, "")
+              .split("L")
+              .map(p => p.split(","))
+          );
+        });
+
+        let curves = [];
+        let curve_path = land_rounded.forEach(d => {
+          curves.push(line(d));
+        });
+
+        return curves;
+      }
+
+      let tooltip = d3
+        .select("body")
+        .append("div")
+        .attr("class", "tooltip")
+        .style("opacity", 0)
+        .style("position", "absolute");
+
+      d3.json("plastic_map.topojson").then(function(data) {
+        const ms_countries = topojson.feature(data, data.objects.foo);
+        console.log(ms_countries.features);
+
+        const container = d3.select("#map-container");
+        const svg = d3.select("#mapSVG");
+        const g = svg.append("g");
+
+        //color.domain(d3.extent(ms_countries.features.map(d => d.properties.plastic_kg_person_year).filter(d => typeof d === "number")));
+        color.domain([0, 50]); //clipping domain because of outliers
+        
+        g.selectAll(".land")
+          .data(ms_countries.features)
+          .join("path")
+          .attr("fill", d => color(d.properties.plastic_kg_person_year))
+          .attr("d", round)
+          .attr("class", "land")
+          .attr("stroke", "black")
+          .attr("stroke-opacity", 0)
+          .on("mouseover", function(d) {
+            tooltip
+              .transition()
+              .duration(250)
+              .style("opacity", 0.8);
+            tooltip
+              .html(
+                `
+        <div class="tooltip-title">${d.properties.ADMIN}</div>
+        <div class="plastic-tooltip-1">
+          <span class="tooltip-desc-plastic">Mismanaged plastic for country (tonnes/year):</span> 
+          <div class="tooltip-num-plastic">${d.properties.plastic_country_tonnes}</div>
+        </div>
+        <div class="plastic-tooltip-2">
+          <span class="tooltip-desc-plastic">Mismanaged plastic per person (kg/year):</span> 
+          <div class="tooltip-num-plastic">${d.properties.plastic_kg_person_year}</div>
+        </div>
+        `
+              )
+              .style("left", d3.event.pageX + 28 + "px")
+              .style("top", d3.event.pageY - 28 + "px");
+          })
+          .on("mouseout", function(d) {
+            tooltip
+              .transition()
+              .duration(250)
+              .style("opacity", 0);
+          });
+
+        g.append("path")
+          .datum(topojson.mesh(data, data.objects.foo, (a, b) => a !== b))
+          .attr("fill", "none")
+          .attr("stroke", "white")
+          .attr("stroke-linejoin", "round")
+          .attr("d", path)
+          .attr("stroke-opacity", 1)
+          .attr("stroke-width", 0.7);
+
+        container.append("img")
+          .attr("src", "plastic_map_legend.png")
+          .attr("id", "map-legend");
+        
+      });
+    </script>
+  </body>
+</html>
